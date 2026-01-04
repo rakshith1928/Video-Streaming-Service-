@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+
+hls/**/*.ts
+
+.DS_Store
+Thumbs.db
+

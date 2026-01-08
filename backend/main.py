@@ -1,10 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from auth.routes import router as auth_router
 import os 
 
 
 app = FastAPI()
 BASE_HLS_PATH = os.path.abspath("../hls")
+
+#Auth Routes
+app.include_router(auth_router , prefix="/auth")
 
 @app.get("/")
 def home():

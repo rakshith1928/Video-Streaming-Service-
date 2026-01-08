@@ -1,8 +1,7 @@
 from fastapi import APIRouter , HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel 
-from dotenv import load_dotenv
-import os
+from config import SECRET_KEY , ALGORITHM
 
 router = APIRouter()
 
@@ -11,9 +10,7 @@ users = {
   "guest":{"password":"guest","max_quality":"720p"}
 }
 # Load environment variables from .env file
-load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
+#load_dotenv()
 
 class LoginRequest(BaseModel):
     username : str

@@ -9,6 +9,8 @@ users = {
   "lazy":{"password":"1234","max_quality":"1080p"},
   "guest":{"password":"guest","max_quality":"720p"}
 }
+#Simulated DB for refresh tokens
+refresh_token_store = {}
 # Load environment variables from .env file
 #load_dotenv()
 
@@ -41,6 +43,7 @@ def login(req : LoginRequest):
       "exp": refresh_expire
     } 
     refresh_token = jwt.encode(refresh_payload, SECRET_KEY , algorithm=ALGORITHM)
+    refresh_token_store[req.username] = refresh_token
     
     return {"access token": access_token, "refresh token": refresh_token}
   
@@ -48,6 +51,7 @@ def login(req : LoginRequest):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+    
 
   
 @router.post("/refresh")
@@ -56,6 +60,10 @@ def refresh_token(request: RefreshRequest):
         payload = jwt.decode(request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type")!="refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
+        
+        username = payload["username"]
+        if refresh_token_store.get(username) != request.refresh_token:
+            raise HTTPException(status_code=401,detail="Refresh Token revoked")
         
         access_expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         new_access_playload = {
@@ -66,9 +74,31 @@ def refresh_token(request: RefreshRequest):
             
         }
         new_access_token = jwt.encode(new_access_playload, SECRET_KEY, algorithm=ALGORITHM)
-        return {"access_token": new_access_token}
+        #Refresh Token Roatation
+        refresh_expire = datetime.utcnow()+timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        new_refresh_payload = {
+            "username": username,
+            "type": "refresh",
+            "exp": refresh_expire
+        }
+        new_refresh_token = jwt.encode(new_refresh_payload,SECRET_KEY, algorithm=ALGORITHM)
+        # replace old one
+        refresh_token_store[username] = new_refresh_token
+        
+        return {"access_token": new_access_token, "refresh_token": new_refresh_token}
+    
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    
+@router.post("/logout")
+def logout(request : RefreshRequest):
+    try:
+        payload = jwt.encode(request.refresh_token,SECRET_KEY , algorithms=[ALGORITHM])
+        username = payload["username"]
+        refresh_token_store.pop(username,None)
+        return {"message": "Logged out successfully"}
+    except JWTError:
+        raise HTTPException(status_code=401,detail="Invalid Token")
         
           
     

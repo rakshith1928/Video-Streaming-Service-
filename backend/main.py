@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from auth.routes import router as auth_router
 from media.routes import router as media_router
+from database import engine
+from models import Base
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 

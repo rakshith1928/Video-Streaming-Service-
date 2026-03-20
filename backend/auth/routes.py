@@ -2,6 +2,8 @@ from fastapi import APIRouter , HTTPException
 from jose import JWTError, jwt
 from pydantic import BaseModel 
 from config import SECRET_KEY , ALGORITHM , ACCESS_TOKEN_EXPIRE_MINUTES, REFRESH_TOKEN_EXPIRE_DAYS
+from database import SessionLocal
+from models import User, RefreshToken
 from datetime import datetime, timedelta
 router = APIRouter()
 
@@ -21,9 +23,13 @@ class LoginRequest(BaseModel):
     
 @router.post("/login")
 def login(req : LoginRequest):
-    user = users.get(req.username)
-    if not user or user["password"] != req.password:
-      raise HTTPException(status_code= 401, detail="Invalid username or password")
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == req.username).first()
+        if user is None or user.password != req.password:
+            raise HTTPException(status_code=401, detail="Invalid username or password")
+    finally:
+        db.close()
     #expire token after 30 minutes
     access_expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
@@ -43,7 +49,11 @@ def login(req : LoginRequest):
       "exp": refresh_expire
     } 
     refresh_token = jwt.encode(refresh_payload, SECRET_KEY , algorithm=ALGORITHM)
-    refresh_token_store[req.username] = refresh_token
+    db.query(RefreshToken).filter(RefreshToken.username == req.username).delete()
+    new_token = RefreshToken(username=req.username, token=refresh_token)
+    db.add(new_token)
+    db.commit()
+    
     
     return {"access token": access_token, "refresh token": refresh_token}
   
@@ -56,14 +66,18 @@ class RefreshRequest(BaseModel):
   
 @router.post("/refresh")
 def refresh_token(request: RefreshRequest):
+    db = SessionLocal()
     try:
         payload = jwt.decode(request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type")!="refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
         
         username = payload["username"]
-        if refresh_token_store.get(username) != request.refresh_token:
-            raise HTTPException(status_code=401,detail="Refresh Token revoked")
+        #Check if token is in store
+        stored = db.query(RefreshToken).filter(RefreshToken.username == username).first()
+        if not stored or stored.token != request.refresh_token:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+
         
         access_expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         new_access_playload = {
